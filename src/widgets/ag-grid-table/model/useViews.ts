@@ -102,8 +102,6 @@ export function useViews({
         if (first?.id) {
           setActiveViewId(first.id);
         }
-        // Keep the dropdown in sync even if cache helpers don't auto-revalidate this query.
-        await viewsQuery.refetch();
         onStateApplied(current);
       } else {
         await updateMutation.mutateAsync({
@@ -112,7 +110,6 @@ export function useViews({
           sort_model: current.sortModel,
           filter_model: current.filterModel,
         });
-        await viewsQuery.refetch();
         onStateApplied(current);
       }
     },
@@ -123,7 +120,6 @@ export function useViews({
       insertMutation,
       onStateApplied,
       updateMutation,
-      viewsQuery,
     ]
   );
 
@@ -131,9 +127,8 @@ export function useViews({
     if (!activeViewId) return;
 
     await deleteMutation.mutateAsync({ id: activeViewId });
-    await viewsQuery.refetch();
     resetToDefault();
-  }, [activeViewId, deleteMutation, resetToDefault, viewsQuery]);
+  }, [activeViewId, deleteMutation, resetToDefault]);
 
   return {
     views,

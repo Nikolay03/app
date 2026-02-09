@@ -11,6 +11,9 @@ import type { PostgrestResponse } from "@supabase/postgrest-js";
 import { createClient } from "@/shared/lib/supabase/browser";
 import type { ViewRecord } from "@/entities/view/model/types";
 
+const VIEWS_SELECT =
+  "id,name,grid_key,column_state,sort_model,filter_model,created_at";
+
 function toPostgrestResponse<T>(
   data: T[]
 ): PostgrestResponse<T> {
@@ -29,7 +32,7 @@ export function useViewsData(gridKey: string, initialViews?: ViewRecord[]) {
   const viewsQb = useMemo(() => {
     return supabase
       .from("views")
-      .select("*")
+      .select(VIEWS_SELECT)
       .eq("grid_key", gridKey)
       .order("created_at", { ascending: true });
   }, [gridKey, supabase]);
@@ -46,17 +49,17 @@ export function useViewsData(gridKey: string, initialViews?: ViewRecord[]) {
   const insertMutation = useInsertMutation(
     supabase.from("views"),
     ["id"],
-    "*"
+    VIEWS_SELECT
   );
   const updateMutation = useUpdateMutation(
     supabase.from("views"),
     ["id"],
-    "*"
+    VIEWS_SELECT
   );
   const deleteMutation = useDeleteMutation(
     supabase.from("views"),
     ["id"],
-    "*"
+    VIEWS_SELECT
   );
 
   return {

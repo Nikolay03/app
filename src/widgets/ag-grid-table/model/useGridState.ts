@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import type { AgGridReact } from "ag-grid-react";
-import type { ColDef } from "ag-grid-community";
+import type { ColDef, SortModelItem } from "ag-grid-community";
 import type { GridState } from "./types";
 import { buildDefaultState } from "./buildDefaultState";
 
@@ -14,6 +14,21 @@ type Params<T> = {
 
 function serializeState(state: GridState) {
   return JSON.stringify(state);
+}
+
+function sortModelFromColumnState(columnState: GridState["columnState"]) {
+  // In v33+, sorting is controlled via Column State. Derive SortModel from it so
+  // we save/compare/apply a consistent source of truth.
+  return columnState
+    .filter((s) => s.sort != null)
+    .slice()
+    .sort((a, b) => (a.sortIndex ?? 0) - (b.sortIndex ?? 0))
+    .map(
+      (s): SortModelItem => ({
+        colId: s.colId,
+        sort: s.sort!,
+      })
+    );
 }
 
 export function useGridState<T>({ columnDefs, gridRef }: Params<T>) {
@@ -48,9 +63,10 @@ export function useGridState<T>({ columnDefs, gridRef }: Params<T>) {
       return defaultState;
     }
 
+    const columnState = api.getColumnState();
     return {
-      columnState: api.getColumnState(),
-      sortModel: api.getState().sort?.sortModel ?? [],
+      columnState,
+      sortModel: sortModelFromColumnState(columnState),
       filterModel: api.getFilterModel(),
     };
   }, [defaultState, gridRef]);
@@ -61,7 +77,13 @@ export function useGridState<T>({ columnDefs, gridRef }: Params<T>) {
       if (!api) {
         return;
       }
-      api.applyColumnState({ state: state.columnState, applyOrder: true });
+      // Important: Column State APIs interpret `undefined` as "don't change".
+      // To ensure switching views clears previous sorting, set a default sort of null.
+      api.applyColumnState({
+        state: state.columnState,
+        applyOrder: true,
+        defaultState: { sort: null, sortIndex: null },
+      });
       api.setFilterModel(state.filterModel);
     },
     [gridRef]

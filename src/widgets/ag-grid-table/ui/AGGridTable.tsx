@@ -1,12 +1,13 @@
 ﻿"use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import {
   AllCommunityModule,
   ModuleRegistry,
   themeQuartz,
   type ColDef,
+  type GridApi,
   type GridReadyEvent,
 } from "ag-grid-community";
 import type { ViewRecord } from "@/entities/view/model/types";
@@ -15,6 +16,7 @@ import { useViews } from "@/widgets/ag-grid-table/model/useViews";
 import GridSkeleton from "@/widgets/ag-grid-table/ui/GridSkeleton";
 import ViewToolbar from "@/widgets/ag-grid-table/ui/ViewToolbar";
 import ViewToolbarSkeleton from "@/widgets/ag-grid-table/ui/ViewToolbarSkeleton";
+import ColumnsMenu from "@/widgets/ag-grid-table/ui/ColumnsMenu";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -33,7 +35,25 @@ export default function AGGridTable<T>({
   initialViewId = null,
   initialViews,
 }: Props<T>) {
+  // AG Grid will re-apply `columnDefs` when the prop identity changes.
+  // In dev/HMR this can happen unexpectedly and will reset column visibility,
+  // fighting our persisted view state and the Columns menu.
+  // This table treats `columnDefs` as static: first render wins.
+  const [effectiveColumnDefs] = useState(() => columnDefs);
+
+  useEffect(() => {
+    if (
+      process.env.NODE_ENV !== "production" &&
+      columnDefs !== effectiveColumnDefs
+    ) {
+      console.warn(
+        "AGGridTable: `columnDefs` prop changed after mount; ignoring to preserve grid state."
+      );
+    }
+  }, [columnDefs, effectiveColumnDefs]);
+
   const gridRef = useRef<AgGridReact<T>>(null);
+  const [gridApi, setGridApi] = useState<GridApi | null>(null);
   const [gridReady, setGridReady] = useState(false);
   const [initializingView, setInitializingView] = useState(
     Boolean(initialViewId)
@@ -47,7 +67,8 @@ export default function AGGridTable<T>({
     applyState,
     refreshDirty,
     markSaved,
-  } = useGridState<T>({ columnDefs, gridRef });
+    markDefault,
+  } = useGridState<T>({ columnDefs: effectiveColumnDefs, gridRef });
 
   const {
     views,
@@ -73,28 +94,35 @@ export default function AGGridTable<T>({
         return;
       }
 
+      setGridApi(event.api);
+
+      // Establish the baseline "Default View" from the real grid state. This includes
+      // any auto columns (e.g. row selection) and normalized widths.
+      event.api.sizeColumnsToFit();
+      const baseline = captureState();
+      markDefault(baseline);
+
       if (initialViewId) {
         // Apply the initial view immediately before unblocking the UI to avoid
         // showing the default grid state first.
         const applied = selectView(initialViewId);
         if (!applied) {
-          markSaved(captureState());
+          markSaved(baseline);
         }
       } else {
-        event.api.sizeColumnsToFit();
         // Save the actual initial state (includes width changes from sizeColumnsToFit).
-        markSaved(captureState());
+        markSaved(baseline);
       }
 
       initialAppliedRef.current = true;
       setGridReady(true);
       setInitializingView(false);
     },
-    [captureState, initialViewId, markSaved, selectView]
+    [captureState, initialViewId, markDefault, markSaved, selectView]
   );
 
   return (
-    <div className="rounded-xl border border-layer-line bg-layer p-4 shadow-sm">
+    <div className="relative isolate rounded-xl border border-layer-line bg-layer p-4 shadow-sm">
       <div className="flex flex-wrap items-center gap-3">
         {loadingViews || initializingView ? (
           <ViewToolbarSkeleton />
@@ -111,6 +139,14 @@ export default function AGGridTable<T>({
             onResetDefault={resetToDefault}
           />
         )}
+        <ColumnsMenu
+          columnDefs={effectiveColumnDefs}
+          api={gridApi}
+          // Allow the menu to work as soon as the Grid API exists.
+          // We only disable while applying the initial view.
+          disabled={initializingView}
+          onChanged={refreshDirty}
+        />
       </div>
       <div className="relative mt-4 h-[600px]">
         {!gridReady || initializingView ? <GridSkeleton /> : null}
@@ -118,7 +154,7 @@ export default function AGGridTable<T>({
           <AgGridReact<T>
             ref={gridRef}
             rowData={rowData}
-            columnDefs={columnDefs}
+            columnDefs={effectiveColumnDefs}
             theme={themeQuartz}
             defaultColDef={{
               sortable: true,

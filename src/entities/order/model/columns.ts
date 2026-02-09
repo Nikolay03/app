@@ -4,28 +4,32 @@ import type { Order } from "./types";
 export const orderColumnDefs: ColDef<Order>[] = [
   { field: "order_id", headerName: "Order ID" },
   { field: "customer_name", headerName: "Customer Name" },
-  { field: "customer_phone", headerName: "Customer Phone", hide: true },
+  { field: "customer_phone", headerName: "Customer Phone", initialHide: true },
   { field: "order_date", headerName: "Order Date" },
-  { field: "shipping_address", headerName: "Shipping Address", hide: true },
+  {
+    field: "shipping_address",
+    headerName: "Shipping Address",
+    initialHide: true,
+  },
   { field: "items_count", headerName: "Items Count" },
   {
     field: "subtotal",
     headerName: "Subtotal",
-    hide: true,
+    initialHide: true,
     valueFormatter: ({ value }) =>
       value == null ? "" : `$${Number(value).toFixed(2)}`,
   },
   {
     field: "shipping_cost",
     headerName: "Shipping Cost",
-    hide: true,
+    initialHide: true,
     valueFormatter: ({ value }) =>
       value == null ? "" : `$${Number(value).toFixed(2)}`,
   },
   {
     field: "discount",
     headerName: "Discount",
-    hide: true,
+    initialHide: true,
     valueFormatter: ({ value }) =>
       value == null ? "" : `${Number(value).toFixed(2)}%`,
   },
@@ -46,5 +50,9 @@ export const orderColumnDefs: ColDef<Order>[] = [
   },
   { field: "status", headerName: "Status" },
   { field: "tracking_number", headerName: "Tracking Number" },
-  { field: "estimated_delivery", headerName: "Estimated Delivery", hide: true },
+  {
+    field: "estimated_delivery",
+    headerName: "Estimated Delivery",
+    initialHide: true,
+  },
 ];

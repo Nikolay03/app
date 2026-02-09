@@ -12,23 +12,35 @@ type Params<T> = {
   gridRef: React.RefObject<AgGridReact<T> | null>;
 };
 
+function serializeState(state: GridState) {
+  return JSON.stringify(state);
+}
+
 export function useGridState<T>({ columnDefs, gridRef }: Params<T>) {
-  const defaultState = useMemo(
+  const derivedDefaultState = useMemo(
     () => buildDefaultState(columnDefs),
     [columnDefs]
   );
+  // Default view baseline. We initialize from columnDefs, but we also allow
+  // capturing the real grid state on GridReady (includes auto columns, widths).
+  const [defaultState, setDefaultState] = useState<GridState>(
+    () => derivedDefaultState
+  );
 
-  const lastSavedSerializedRef = useRef<string>("");
+  const lastSavedSerializedRef = useRef<string>(
+    serializeState(derivedDefaultState)
+  );
   const rafRef = useRef<number | null>(null);
   const [dirty, setDirty] = useState(false);
 
-  const serializeState = useCallback((state: GridState) => {
-    return JSON.stringify(state);
-  }, []);
-
   useEffect(() => {
-    lastSavedSerializedRef.current = serializeState(defaultState);
-  }, [defaultState, serializeState]);
+    // If column definitions change (should be rare), reset the baseline default.
+    setDefaultState(derivedDefaultState);
+  }, [derivedDefaultState]);
+
+  const markDefault = useCallback((state: GridState) => {
+    setDefaultState(state);
+  }, []);
 
   const captureState = useCallback((): GridState => {
     const api = gridRef.current?.api;
@@ -65,14 +77,14 @@ export function useGridState<T>({ columnDefs, gridRef }: Params<T>) {
       const currentSerialized = serializeState(current);
       setDirty(currentSerialized !== lastSavedSerializedRef.current);
     });
-  }, [captureState, serializeState]);
+  }, [captureState]);
 
   const markSaved = useCallback(
     (state: GridState) => {
       lastSavedSerializedRef.current = serializeState(state);
       setDirty(false);
     },
-    [serializeState]
+    []
   );
 
   useEffect(() => {
@@ -90,5 +102,6 @@ export function useGridState<T>({ columnDefs, gridRef }: Params<T>) {
     applyState,
     refreshDirty,
     markSaved,
+    markDefault,
   };
 }

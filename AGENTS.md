@@ -91,8 +91,8 @@ This repo intentionally uses `@supabase/ssr` (no `auth-helpers-nextjs`).
 
 3) Middleware proxy (Auth gate + cookie refresh):
 - Implementation: `src/proxy.ts`
-- Entry point: `middleware.ts`
-- Redirects to `/login` when there is no user session (except `/login` and `/auth/*`).
+- This repo uses `src/proxy.ts` as the Next.js Middleware entrypoint.
+- Do not add a separate `middleware.ts` that re-exports `config` (Next requires `config` to be declared in the middleware module itself).
 
 ## Database (Migrations + Seed)
 Schema lives in `supabase/migrations/`:

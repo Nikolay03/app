@@ -8,6 +8,7 @@ export default function ViewToolbarSkeleton() {
       <div className="h-9 w-36 rounded-lg bg-layer-line" />
       <div className="h-9 w-28 rounded-lg bg-layer-line" />
       <div className="h-9 w-40 rounded-lg bg-layer-line" />
+      <div className="h-9 w-28 rounded-lg bg-layer-line" />
       <div className="h-6 w-28 rounded-full bg-layer-line" />
     </div>
   );

@@ -3,7 +3,7 @@ import "./globals.css";
 import Providers from "./providers";
 
 export const metadata: Metadata = {
-  title: "AG-Grid Views Manager",
+  title: "Mirasoft",
   description: "Next.js + Supabase AG-Grid views management system",
 };
 

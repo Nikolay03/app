@@ -4,3 +4,11 @@
 @import "preline/variants.css";
 @plugin "@tailwindcss/forms";
 @import "preline/css/themes/theme.css";
+
+/* AG Grid: keep the standard loading overlay (spinner + "Loading...") but don't block UI clicks. */
+.ag-root-wrapper .ag-overlay,
+.ag-root-wrapper .ag-overlay-panel,
+.ag-root-wrapper .ag-overlay-loading-wrapper,
+.ag-root-wrapper .ag-overlay-loading-center {
+  pointer-events: none;
+}

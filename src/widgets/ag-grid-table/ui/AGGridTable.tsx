@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import {
   ModuleRegistry,
@@ -64,10 +64,11 @@ export default function AGGridTable<T>({
       filterParams: {
         buttons: ["reset", "apply"],
         closeOnApply: true,
+        // Disable the built-in AND/OR (multiple conditions) UI; we only support one condition.
+        maxNumConditions: 1,
+        numAlwaysVisibleConditions: 1,
       },
       resizable: true,
-      // Hide per-row / per-cell "Loading..." placeholders; we show a single non-blocking indicator instead.
-      loadingCellRenderer: () => "",
       // Keep the old UI: no column menu (three-dots) in headers.
       suppressHeaderMenuButton: true,
       suppressHeaderContextMenu: true,
@@ -106,12 +107,7 @@ export default function AGGridTable<T>({
   const [initializingView, setInitializingView] = useState(
     Boolean(initialViewId)
   );
-  const [ssrmLoading, setSsrmLoading] = useState(false);
   const initialAppliedRef = useRef(false);
-
-  const onSsrmLoadingChange = useCallback((loading: boolean) => {
-    setSsrmLoading(loading);
-  }, []);
 
   const {
     defaultState,
@@ -158,9 +154,8 @@ export default function AGGridTable<T>({
     if (mode !== "ssrm-enterprise" || !ssrmTable) return null;
     return createNextServerSideDatasource({
       table: ssrmTable,
-      onLoadingChange: onSsrmLoadingChange,
     });
-  }, [mode, onSsrmLoadingChange, ssrmTable]);
+  }, [mode, ssrmTable]);
 
   const onGridReady = (event: GridReadyEvent) => {
     if (initialAppliedRef.current) {
@@ -218,11 +213,6 @@ export default function AGGridTable<T>({
           disabled={initializingView}
           onChanged={refreshDirty}
         />
-        {mode === "ssrm-enterprise" && gridReady && !initializingView && ssrmLoading ? (
-          <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-            Loading...
-          </span>
-        ) : null}
       </div>
       <div className="relative mt-4 h-[600px]">
         {!gridReady || initializingView ? <GridSkeleton /> : null}
@@ -237,9 +227,6 @@ export default function AGGridTable<T>({
             cacheBlockSize={mode === "ssrm-enterprise" ? 100 : undefined}
             blockLoadDebounceMillis={mode === "ssrm-enterprise" ? 150 : undefined}
             rowBuffer={mode === "ssrm-enterprise" ? 0 : undefined}
-            suppressServerSideFullWidthLoadingRow={
-              mode === "ssrm-enterprise" ? true : undefined
-            }
             // Force SSRM sorting to be server-driven, even when all rows are loaded.
             serverSideEnableClientSideSort={
               mode === "ssrm-enterprise" ? false : undefined

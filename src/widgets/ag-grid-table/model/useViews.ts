@@ -33,25 +33,15 @@ export function useViews({
 
   const views = useMemo(() => viewsQuery.data ?? [], [viewsQuery.data]);
 
-  const resetToDefault = useCallback(() => {
+  const applyDefaultView = useCallback(() => {
     setActiveViewId(null);
     applyState(defaultState);
     // Persist the actual grid state (AG Grid may normalize state on apply).
     onStateApplied(captureState());
   }, [applyState, captureState, defaultState, onStateApplied]);
 
-  const selectView = useCallback(
-    (value: string) => {
-      if (value === "default") {
-        resetToDefault();
-        return true;
-      }
-
-      const selected = views.find((view) => view.id === value);
-      if (!selected) {
-        return false;
-      }
-
+  const applySavedView = useCallback(
+    (selected: ViewRecord) => {
       const viewState: GridState = {
         columnState: mergeSortIntoColumnState(
           (selected.column_state as ColumnState[]) ?? [],
@@ -64,10 +54,41 @@ export function useViews({
       applyState(viewState);
       // Persist the actual grid state (AG Grid may normalize state on apply).
       onStateApplied(captureState());
+    },
+    [applyState, captureState, onStateApplied]
+  );
+
+  const selectView = useCallback(
+    (value: string) => {
+      if (value === "default") {
+        applyDefaultView();
+        return true;
+      }
+
+      const selected = views.find((view) => view.id === value);
+      if (!selected) {
+        return false;
+      }
+
+      applySavedView(selected);
       return true;
     },
-    [applyState, captureState, onStateApplied, resetToDefault, views]
+    [applyDefaultView, applySavedView, views]
   );
+
+  const resetToDefault = useCallback(() => {
+    // UX: If a saved view is selected, "Reset to Default" should discard unsaved
+    // changes by restoring that view's saved state (not switch to "Default View").
+    // If we're already on the Default View, restore the app default state.
+    if (activeViewId) {
+      const selected = views.find((view) => view.id === activeViewId);
+      if (selected) {
+        applySavedView(selected);
+        return;
+      }
+    }
+    applyDefaultView();
+  }, [activeViewId, applyDefaultView, applySavedView, views]);
 
   const saveView = useCallback(
     async (mode: SaveMode, name?: string) => {
@@ -127,8 +148,8 @@ export function useViews({
     if (!activeViewId) return;
 
     await deleteMutation.mutateAsync({ id: activeViewId });
-    resetToDefault();
-  }, [activeViewId, deleteMutation, resetToDefault]);
+    applyDefaultView();
+  }, [activeViewId, applyDefaultView, deleteMutation]);
 
   return {
     views,

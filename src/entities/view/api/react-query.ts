@@ -43,7 +43,13 @@ export function useViewsData(gridKey: string, initialViews?: ViewRecord[]) {
 
   const viewsQuery = usePostgrestQuery(
     viewsQb as unknown as PromiseLike<PostgrestResponse<ViewRecord>>,
-    { initialData: initialViewsResponse }
+    {
+      initialData: initialViewsResponse,
+      // We already SSR-fetch the views list and pass it as `initialViews`.
+      // In React 18 Strict Mode (dev), the app mounts twice which can cause
+      // duplicate GET requests. Disable the initial fetch when we have SSR data.
+      enabled: initialViewsResponse == null,
+    }
   );
 
   const insertMutation = useInsertMutation(

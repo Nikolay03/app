@@ -10,6 +10,12 @@ type PostgrestQb = {
   eq: (column: string, value: unknown) => PostgrestQb;
   neq: (column: string, value: unknown) => PostgrestQb;
   ilike: (column: string, pattern: string) => PostgrestQb;
+  not: (column: string, operator: string, value: unknown) => PostgrestQb;
+  is: (column: string, value: boolean | null) => PostgrestQb;
+  or: (
+    filters: string,
+    opts?: { referencedTable?: string; foreignTable?: string }
+  ) => PostgrestQb;
   gt: (column: string, value: unknown) => PostgrestQb;
   gte: (column: string, value: unknown) => PostgrestQb;
   lt: (column: string, value: unknown) => PostgrestQb;
@@ -43,6 +49,19 @@ function applySort(qb: PostgrestQb, sortModel: unknown) {
 function applyFilter(qb: PostgrestQb, filterModel: unknown) {
   if (!isRecord(filterModel)) return qb;
 
+  const firstCondition = (model: Record<string, unknown>) => {
+    // When multiple conditions are allowed, AG Grid can send
+    // { operator: 'AND'|'OR', conditions: [...] } or { condition1, condition2 }.
+    // This app supports a single condition, so we take the first one when present.
+    const conditions = model.conditions;
+    if (Array.isArray(conditions) && isRecord(conditions[0])) {
+      return conditions[0] as Record<string, unknown>;
+    }
+    const c1 = model.condition1;
+    if (isRecord(c1)) return c1 as Record<string, unknown>;
+    return model;
+  };
+
   const normalizeDateOnly = (v: string) => {
     // DB columns are `date` (not timestamptz). AG Grid sometimes sends
     // "YYYY-MM-DD 00:00:00" (or ISO). Normalize to "YYYY-MM-DD".
@@ -53,16 +72,27 @@ function applyFilter(qb: PostgrestQb, filterModel: unknown) {
 
   for (const [col, raw] of Object.entries(filterModel)) {
     if (!raw) continue;
-    const model = raw as Record<string, unknown>;
+    const model = firstCondition(raw as Record<string, unknown>);
     const filterType = model.filterType ?? "text";
 
     // Minimal support for the app's needs (text/number/date/set).
     if (filterType === "text") {
       const v = typeof model.filter === "string" ? model.filter.trim() : "";
-      if (!v) continue;
       const t = model.type ?? "contains";
+
+      if (t === "blank") {
+        qb = qb.is(col, null);
+        continue;
+      }
+      if (t === "notBlank") {
+        qb = qb.not(col, "is", null);
+        continue;
+      }
+
+      if (!v) continue;
       if (t === "equals") qb = qb.eq(col, v);
       else if (t === "notEqual") qb = qb.neq(col, v);
+      else if (t === "notContains") qb = qb.not(col, "ilike", `%${v}%`);
       else if (t === "startsWith") qb = qb.ilike(col, `${v}%`);
       else if (t === "endsWith") qb = qb.ilike(col, `%${v}`);
       else qb = qb.ilike(col, `%${v}%`);
@@ -70,9 +100,28 @@ function applyFilter(qb: PostgrestQb, filterModel: unknown) {
     }
 
     if (filterType === "number") {
+      const t = model.type ?? "equals";
+
+      if (t === "blank") {
+        qb = qb.is(col, null);
+        continue;
+      }
+      if (t === "notBlank") {
+        qb = qb.not(col, "is", null);
+        continue;
+      }
+
       const n = Number(model.filter);
       if (!Number.isFinite(n)) continue;
-      const t = model.type ?? "equals";
+
+      if (t === "inRange") {
+        const nTo = Number(model.filterTo);
+        if (!Number.isFinite(nTo)) continue;
+        qb = qb.gte(col, n);
+        qb = qb.lte(col, nTo);
+        continue;
+      }
+
       if (t === "notEqual") qb = qb.neq(col, n);
       else if (t === "greaterThan") qb = qb.gt(col, n);
       else if (t === "greaterThanOrEqual") qb = qb.gte(col, n);
@@ -87,12 +136,32 @@ function applyFilter(qb: PostgrestQb, filterModel: unknown) {
         typeof model.dateFrom === "string"
           ? model.dateFrom
           : typeof model.filter === "string"
-            ? model.filter
-            : "";
+          ? model.filter
+          : "";
       const v = vRaw ? normalizeDateOnly(vRaw) : "";
-      if (!v) continue;
       const t = model.type ?? "equals";
-      if (t === "greaterThan") qb = qb.gt(col, v);
+
+      if (t === "blank") {
+        qb = qb.is(col, null);
+        continue;
+      }
+      if (t === "notBlank") {
+        qb = qb.not(col, "is", null);
+        continue;
+      }
+
+      if (t === "inRange") {
+        const toRaw = typeof model.dateTo === "string" ? model.dateTo : "";
+        const to = toRaw ? normalizeDateOnly(toRaw) : "";
+        if (!v || !to) continue;
+        qb = qb.gte(col, v);
+        qb = qb.lte(col, to);
+        continue;
+      }
+
+      if (!v) continue;
+      if (t === "notEqual") qb = qb.neq(col, v);
+      else if (t === "greaterThan") qb = qb.gt(col, v);
       else if (t === "greaterThanOrEqual") qb = qb.gte(col, v);
       else if (t === "lessThan") qb = qb.lt(col, v);
       else if (t === "lessThanOrEqual") qb = qb.lte(col, v);

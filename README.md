@@ -29,5 +29,15 @@ npm run dev
 Redirect URL for email confirmations:
 `http://localhost:3000/auth/confirm`
 
+## E2E Tests (Playwright)
+Run dev server first:
+```
+npm run dev
+```
+Then in another terminal:
+```
+npm run test:e2e
+```
+
 ## Supabase Auth SSR
 This project uses `@supabase/ssr` with cookie `getAll`/`setAll` only, per requirements.

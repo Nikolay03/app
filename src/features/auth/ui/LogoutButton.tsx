@@ -1,21 +1,31 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createClient } from "@/shared/lib/supabase/browser";
+import Button from "@/shared/ui/button/Button";
+import { useSignOutMutation } from "@/features/auth/model/useAuthMutations";
 
 export default function LogoutButton() {
-  const supabase = createClient();
   const router = useRouter();
+  const signOutMutation = useSignOutMutation();
 
-  const onLogout = async () => {
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
+  const onLogout = () => {
+    signOutMutation.reset();
+    signOutMutation.mutate(undefined, {
+      onSuccess: () => {
+        router.push("/login");
+        router.refresh();
+      },
+    });
   };
 
   return (
-    <button type="button" onClick={onLogout}>
+    <Button
+      type="button"
+      variant="ghost"
+      onClick={onLogout}
+      disabled={signOutMutation.isPending}
+    >
       Logout
-    </button>
+    </Button>
   );
 }

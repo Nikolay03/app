@@ -1,40 +1,58 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AgGridReact } from "ag-grid-react";
 import {
-  AllCommunityModule,
   ModuleRegistry,
   themeQuartz,
   type ColDef,
   type GridApi,
   type GridReadyEvent,
+  type IServerSideDatasource,
+  type RefreshServerSideParams,
 } from "ag-grid-community";
+import { AllEnterpriseModule, LicenseManager } from "ag-grid-enterprise";
 import type { ViewRecord } from "@/entities/view/model/types";
 import { useGridState } from "@/widgets/ag-grid-table/model/useGridState";
 import { useViews } from "@/widgets/ag-grid-table/model/useViews";
+import { createNextServerSideDatasource } from "@/widgets/ag-grid-table/model/nextServerSideDatasource";
 import GridSkeleton from "@/widgets/ag-grid-table/ui/GridSkeleton";
 import ViewToolbar from "@/widgets/ag-grid-table/ui/ViewToolbar";
 import ViewToolbarSkeleton from "@/widgets/ag-grid-table/ui/ViewToolbarSkeleton";
 import ColumnsMenu from "@/widgets/ag-grid-table/ui/ColumnsMenu";
 
-ModuleRegistry.registerModules([AllCommunityModule]);
+ModuleRegistry.registerModules([AllEnterpriseModule]);
 
-type Props<T> = {
+const licenseKey = process.env.NEXT_PUBLIC_AG_GRID_LICENSE_KEY;
+if (typeof licenseKey === "string" && licenseKey.trim()) {
+  LicenseManager.setLicenseKey(licenseKey.trim());
+}
+
+type BaseProps<T> = {
   gridKey: string;
-  rowData: T[];
   columnDefs: ColDef<T>[];
   initialViewId?: string | null;
   initialViews?: ViewRecord[];
 };
 
+type Props<T> =
+  | (BaseProps<T> & {
+      mode?: "client";
+      rowData: T[];
+    })
+  | (BaseProps<T> & {
+      mode: "ssrm-enterprise";
+      table: "invoices" | "orders";
+    });
+
 export default function AGGridTable<T>({
   gridKey,
-  rowData,
   columnDefs,
   initialViewId = null,
   initialViews,
+  ...rest
 }: Props<T>) {
+  const mode = rest.mode ?? "client";
   // AG Grid will re-apply `columnDefs` when the prop identity changes.
   // In dev/HMR this can happen unexpectedly and will reset column visibility,
   // fighting our persisted view state and the Columns menu.
@@ -60,15 +78,28 @@ export default function AGGridTable<T>({
   );
   const initialAppliedRef = useRef(false);
 
+  const refreshRows = () => {
+    if (mode !== "ssrm-enterprise") return;
+    const api = gridRef.current?.api;
+    if (!api) return;
+    const params: RefreshServerSideParams = { purge: true };
+    api.refreshServerSide(params);
+  };
+
   const {
     defaultState,
     dirty,
     captureState,
-    applyState,
+    applyState: applyStateRaw,
     refreshDirty,
     markSaved,
     markDefault,
   } = useGridState<T>({ columnDefs: effectiveColumnDefs, gridRef });
+
+  const applyState = (state: Parameters<typeof applyStateRaw>[0]) => {
+    applyStateRaw(state);
+    refreshRows();
+  };
 
   const {
     views,
@@ -88,38 +119,44 @@ export default function AGGridTable<T>({
     initialViews,
   });
 
-  const onGridReady = useCallback(
-    (event: GridReadyEvent) => {
-      if (initialAppliedRef.current) {
-        return;
-      }
+  const serverSideDatasource: IServerSideDatasource<unknown> | null =
+    mode === "ssrm-enterprise"
+      ? createNextServerSideDatasource({
+          table: (rest as { table: "invoices" | "orders" }).table,
+        })
+      : null;
 
-      setGridApi(event.api);
+  const onGridReady = (event: GridReadyEvent) => {
+    if (initialAppliedRef.current) {
+      return;
+    }
 
-      // Establish the baseline "Default View" from the real grid state. This includes
-      // any auto columns (e.g. row selection) and normalized widths.
-      event.api.sizeColumnsToFit();
-      const baseline = captureState();
-      markDefault(baseline);
+    setGridApi(event.api);
 
-      if (initialViewId) {
-        // Apply the initial view immediately before unblocking the UI to avoid
-        // showing the default grid state first.
-        const applied = selectView(initialViewId);
-        if (!applied) {
-          markSaved(baseline);
-        }
-      } else {
-        // Save the actual initial state (includes width changes from sizeColumnsToFit).
+    // Establish the baseline "Default View" from the real grid state. This includes
+    // any auto columns (e.g. row selection) and normalized widths.
+    event.api.sizeColumnsToFit();
+    const baseline = captureState();
+    markDefault(baseline);
+
+    if (initialViewId) {
+      // Apply the initial view immediately before unblocking the UI to avoid
+      // showing the default grid state first.
+      const applied = selectView(initialViewId);
+      if (!applied) {
         markSaved(baseline);
       }
+    } else {
+      // Save the actual initial state (includes width changes from sizeColumnsToFit).
+      markSaved(baseline);
+    }
 
-      initialAppliedRef.current = true;
-      setGridReady(true);
-      setInitializingView(false);
-    },
-    [captureState, initialViewId, markDefault, markSaved, selectView]
-  );
+    initialAppliedRef.current = true;
+    setGridReady(true);
+    setInitializingView(false);
+
+    refreshRows();
+  };
 
   return (
     <div className="relative isolate rounded-xl border border-layer-line bg-layer p-4 shadow-sm">
@@ -153,21 +190,42 @@ export default function AGGridTable<T>({
         <div className="h-full">
           <AgGridReact<T>
             ref={gridRef}
-            rowData={rowData}
+            rowData={mode === "client" ? (rest as { rowData: T[] }).rowData : undefined}
+            rowModelType={mode === "ssrm-enterprise" ? "serverSide" : undefined}
+            serverSideDatasource={
+              mode === "ssrm-enterprise" ? serverSideDatasource ?? undefined : undefined
+            }
+            cacheBlockSize={mode === "ssrm-enterprise" ? 100 : undefined}
+            // Force SSRM sorting to be server-driven, even when all rows are loaded.
+            serverSideEnableClientSideSort={
+              mode === "ssrm-enterprise" ? false : undefined
+            }
+            serverSideSortAllLevels={mode === "ssrm-enterprise" ? true : undefined}
             columnDefs={effectiveColumnDefs}
             theme={themeQuartz}
             defaultColDef={{
               sortable: true,
-              filter: true,
+              // With Enterprise registered, `filter: true` may default to Set Filter for strings.
+              // Force the classic "Contains" UI and keep filtering server-driven via SSRM.
+              filter: "agTextColumnFilter",
               resizable: true,
+              // Keep the old UI: no column menu (three-dots) in headers.
+              suppressHeaderMenuButton: true,
+              suppressHeaderContextMenu: true,
             }}
             onGridReady={onGridReady}
             onColumnMoved={refreshDirty}
             onColumnVisible={refreshDirty}
             onColumnResized={refreshDirty}
             onColumnPinned={refreshDirty}
-            onSortChanged={refreshDirty}
-            onFilterChanged={refreshDirty}
+            onSortChanged={() => {
+              refreshDirty();
+              refreshRows();
+            }}
+            onFilterChanged={() => {
+              refreshDirty();
+              refreshRows();
+            }}
             rowSelection={{
               mode: "multiRow",
               enableClickSelection: false,

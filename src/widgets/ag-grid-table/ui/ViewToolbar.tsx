@@ -48,6 +48,13 @@ export default function ViewToolbar({
         type="button"
         onClick={async () => {
           try {
+            // UX: if we're on the default view, "Save View" should create a new view.
+            if (!activeViewId) {
+              const viewName = window.prompt("View name")?.trim() ?? "";
+              if (!viewName) return;
+              await onSaveView("create", viewName);
+              return;
+            }
             await onSaveView("update");
           } catch (err) {
             console.error(err);
